@@ -4,6 +4,11 @@ from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.embeddings import HuggingFaceInstructEmbeddings
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -16,7 +21,7 @@ def get_pdf_text(pdf_docs):
 def get_text_chunks(text):
     text_splitter = CharacterTextSplitter(
         separator="\n",
-        chunk_size = 500,
+        chunk_size = 600,
         chunk_overlap = 200,
         length_function = len
     )
@@ -27,10 +32,23 @@ def get_text_chunks(text):
     
 def get_vectorstore(text_chunks):
     # embs = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    embs = OpenAIEmbeddings()
+    # embs = OpenAIEmbeddings()
+    embs = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
    
     vector_store = FAISS.from_texts(texts=text_chunks, embedding=embs)
     return vector_store
+
+def get_conv_chain(vector_store):
+    llm = ChatOpenAI()
+    memory = ConversationBufferMemory(memory_key='chat_history',return_messages=True)
+    conv_chain = ConversationalRetrievalChain.from_llm(
+        llm = llm,
+        retriever = vector_store.as_retriever(),
+        memory = memory
+    )
+    return conv_chain
+
+
 
   
 
@@ -38,6 +56,9 @@ def get_vectorstore(text_chunks):
 def main():
     load_dotenv()
     st.set_page_config(page_title="Chat with multiple PDFs",page_icon=":books:")
+    
+    if "conv" not in st.session_state:
+        st.session_state.conv = None
 
     st.header("Chat with multiple PDFs :books:")
     st.text_input("Ask a question about your documents:")
@@ -56,6 +77,8 @@ def main():
 
                 # create vector store after storing them as embs
                 vector_store = get_vectorstore(text_chunks)
+
+                st.session_state.conv = get_conv_chain(vector_store)
 
 
 if __name__ == '__main__':
